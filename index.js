@@ -37,7 +37,7 @@ app.use(express.json());
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://social-media-user-tau.vercel.app",
+  "https://social-media-user-mvjp.vercel.app/",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
