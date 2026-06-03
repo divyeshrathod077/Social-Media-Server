@@ -60,9 +60,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-/* IMPORTANT: handle preflight properly */
-app.options("*", cors(corsOptions));
-
 /* =========================
    SECURITY
 ========================= */
