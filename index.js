@@ -30,30 +30,42 @@ const app = express();
 
 app.use(express.json());
 
+/* =========================
+   CORS FIX (IMPORTANT)
+========================= */
+
 const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://social-media-user-tau.vercel.app/',
-    process.env.FRONTEND_URL
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://social-media-user-tau.vercel.app",
+  process.env.FRONTEND_URL,
 ].filter(Boolean);
 
 const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: (origin, callback) => {
+    // allow server-to-server / mobile apps / Postman
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log(" Blocked CORS origin:", origin);
+    return callback(null, false);
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
-// Use '/*' instead of '*' to avoid path-to-regexp parsing errors
-// `app.options` is redundant because CORS middleware handles preflight requests.
-// Removed to avoid path-to-regexp errors with wildcard paths.
+
+/* IMPORTANT: handle preflight properly */
+app.options("*", cors(corsOptions));
+
+/* =========================
+   SECURITY
+========================= */
 
 app.use(helmet());
 
@@ -64,6 +76,10 @@ app.use(
 );
 
 app.use(morgan("common"));
+
+/* =========================
+   BODY PARSER
+========================= */
 
 app.use(
   bodyParser.json({
@@ -79,11 +95,8 @@ app.use(
   })
 );
 
-
-
 /* =========================
-   IMPORTANT
-   KEEP OLD DUMMY IMAGES
+   STATIC FILES
 ========================= */
 
 app.use(
@@ -96,9 +109,7 @@ app.use(
 ========================= */
 
 app.use("/auth", authRoutes);
-
 app.use("/users", userRoutes);
-
 app.use("/posts", postRoutes);
 
 /* =========================
@@ -129,16 +140,12 @@ mongoose
 
       const fixedPosts = posts.map((post) => ({
         ...post,
-
-        // 🔥 IMPORTANT FIX
         mediaUrl:
           post.mediaUrl ||
           (post.picturePath
             ? `http://localhost:${PORT}/assets/${post.picturePath}`
             : ""),
-
-        mediaType:
-          post.mediaType || "image",
+        mediaType: post.mediaType || "image",
       }));
 
       await Post.insertMany(fixedPosts);
