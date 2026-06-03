@@ -30,6 +30,20 @@ const app = express();
 
 app.use(express.json());
 
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://social-media-user-eight.vercel.app/',
+    process.env.FRONTEND_URL
+].filter(Boolean);
+
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
+}))
+
 app.use(helmet());
 
 app.use(
@@ -54,12 +68,7 @@ app.use(
   })
 );
 
-app.use(
-  cors({
-    FRONTEND_URL:process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true,
-  })
-);
+
 
 /* =========================
    IMPORTANT
