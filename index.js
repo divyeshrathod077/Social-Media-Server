@@ -51,7 +51,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+// Use '/*' instead of '*' to avoid path-to-regexp parsing errors
+// `app.options` is redundant because CORS middleware handles preflight requests.
+// Removed to avoid path-to-regexp errors with wildcard paths.
 
 app.use(helmet());
 
