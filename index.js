@@ -34,24 +34,29 @@ app.use(express.json());
    CORS FIX (IMPORTANT)
 ========================= */
 
+const normalizeOrigin = (origin) => origin?.replace(/\/$/, "");
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://social-media-user-mvjp.vercel.app/",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
+  "https://social-media-user-mvjp.vercel.app",
+  normalizeOrigin(process.env.FRONTEND_URL),
+]
+  .filter(Boolean)
+  .map(normalizeOrigin);
 
 const corsOptions = {
   origin: (origin, callback) => {
     // allow server-to-server / mobile apps / Postman
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
 
-    console.log(" Blocked CORS origin:", origin);
-    return callback(null, false);
+    console.log("Blocked CORS origin:", origin);
+    return callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true,
