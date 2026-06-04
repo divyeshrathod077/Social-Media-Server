@@ -59,7 +59,7 @@ const corsOptions = {
     console.log("Blocked CORS origin:", origin);
     return callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
 };
