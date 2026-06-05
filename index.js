@@ -1,4 +1,3 @@
-
 import express from "express";
 import bodyParser from "body-parser";
 import mongoose from "mongoose";
@@ -31,215 +30,127 @@ const app = express();
 /* =================================
    MIDDLEWARE
 ================================= */
-
 app.use(express.json());
 
 /* =================================
    CORS
 ================================= */
-
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:5173",
-
-  // ADD YOUR FRONTEND VERCEL URL
-  "https://social-media-user-mvjp.vercel.app/",
-   process.env.FRONTEND_URL,
+  // ✅ FIX: no trailing slash
+  "https://social-media-user-mvjp.vercel.app",
+  process.env.FRONTEND_URL,
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow postman/mobile apps
-      if (!origin) return callback(null, true);
+      if (!origin) return callback(null, true); // allow Postman/mobile apps
 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      console.log("Blocked Origin:", origin);
-
-      return callback(
-        new Error("CORS not allowed")
-      );
+      console.log("❌ Blocked Origin:", origin);
+      return callback(new Error("CORS not allowed"));
     },
-
     credentials: true,
-
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
-
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// ✅ FIX: Express v5 requires regex instead of "*"
+app.options(/.*/, cors());
 
 /* =================================
    SECURITY
 ================================= */
-
 app.use(helmet());
-
 app.use(
   helmet.crossOriginResourcePolicy({
     policy: "cross-origin",
   })
 );
-
 app.use(morgan("common"));
 
 /* =================================
    BODY PARSER
 ================================= */
-
-app.use(
-  bodyParser.json({
-    limit: "50mb",
-    extended: true,
-  })
-);
-
-app.use(
-  bodyParser.urlencoded({
-    limit: "50mb",
-    extended: true,
-  })
-);
+app.use(bodyParser.json({ limit: "50mb", extended: true }));
+app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 
 /* =================================
    STATIC FILES
 ================================= */
-
-app.use(
-  "/assets",
-  express.static(
-    path.join(__dirname, "public/assets")
-  )
-);
+app.use("/assets", express.static(path.join(__dirname, "public/assets")));
 
 /* =================================
    ROUTES
 ================================= */
-
 app.use("/auth", authRoutes);
-
 app.use("/users", userRoutes);
-
 app.use("/posts", postRoutes);
-
 app.use("/chat", chatRoutes);
 
 /* =================================
    SERVER
 ================================= */
-
 const server = http.createServer(app);
 
 /* =================================
    SOCKET.IO
 ================================= */
-
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
-
   transports: ["websocket", "polling"],
 });
 
 let onlineUsers = new Map();
 
 io.on("connection", (socket) => {
-  console.log(
-    "User Connected:",
-    socket.id
-  );
-
-  /* =========================
-     ADD USER
-  ========================= */
+  console.log("User Connected:", socket.id);
 
   socket.on("addUser", (userId) => {
     onlineUsers.set(userId, socket.id);
-
-    io.emit(
-      "getUsers",
-      Array.from(onlineUsers)
-    );
-
+    io.emit("getUsers", Array.from(onlineUsers));
     console.log("Online Users:", onlineUsers);
   });
 
-  /* =========================
-     SEND MESSAGE
-  ========================= */
-
-  socket.on(
-    "sendMessage",
-    ({
-      senderId,
-      receiverId,
-      text,
-      image,
-      video,
-    }) => {
-      const receiverSocketId =
-        onlineUsers.get(receiverId);
-
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit(
-          "getMessage",
-          {
-            senderId,
-            text,
-            image,
-            video,
-            createdAt: Date.now(),
-          }
-        );
-      }
+  socket.on("sendMessage", ({ senderId, receiverId, text, image, video }) => {
+    const receiverSocketId = onlineUsers.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("getMessage", {
+        senderId,
+        text,
+        image,
+        video,
+        createdAt: Date.now(),
+      });
     }
-  );
-
-  /* =========================
-     DISCONNECT
-  ========================= */
+  });
 
   socket.on("disconnect", () => {
-    console.log(
-      "User Disconnected:",
-      socket.id
-    );
-
+    console.log("User Disconnected:", socket.id);
     for (let [userId, socketId] of onlineUsers) {
       if (socketId === socket.id) {
         onlineUsers.delete(userId);
         break;
       }
     }
-
-    io.emit(
-      "getUsers",
-      Array.from(onlineUsers)
-    );
+    io.emit("getUsers", Array.from(onlineUsers));
   });
 });
 
 /* =================================
    DATABASE
 ================================= */
-
 const PORT = process.env.PORT || 3001;
 
 mongoose
@@ -248,40 +159,26 @@ mongoose
     console.log("MongoDB Connected");
 
     server.listen(PORT, () => {
-      console.log(
-        `Server running on port ${PORT}`
-      );
+      console.log(`Server running on port ${PORT}`);
     });
 
-    /* =================================
-       SEED DATABASE
-    ================================= */
-
-    const userCount =
-      await User.countDocuments();
+    const userCount = await User.countDocuments();
 
     if (userCount === 0) {
       console.log("Seeding database...");
-
       await User.insertMany(users);
 
-      const fixedPosts = posts.map(
-        (post) => ({
-          ...post,
-
-          mediaUrl:
-            post.mediaUrl ||
-            (post.picturePath
-              ? `http://localhost:${PORT}/assets/${post.picturePath}`
-              : ""),
-
-          mediaType:
-            post.mediaType || "image",
-        })
-      );
+      const fixedPosts = posts.map((post) => ({
+        ...post,
+        mediaUrl:
+          post.mediaUrl ||
+          (post.picturePath
+            ? `http://localhost:${PORT}/assets/${post.picturePath}`
+            : ""),
+        mediaType: post.mediaType || "image",
+      }));
 
       await Post.insertMany(fixedPosts);
-
       console.log("Database Seeded");
     } else {
       console.log("Seed skipped");
