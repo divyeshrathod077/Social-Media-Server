@@ -1,13 +1,17 @@
+
 import express from "express";
 import bodyParser from "body-parser";
 import mongoose from "mongoose";
+import http from "http";
 import cors from "cors";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
 import path from "path";
 import { fileURLToPath } from "url";
+import { Server } from "socket.io";
 
+import chatRoutes from "./routes/message.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import postRoutes from "./routes/posts.js";
@@ -24,51 +28,64 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* =========================
+/* =================================
    MIDDLEWARE
-========================= */
+================================= */
 
 app.use(express.json());
 
-/* =========================
-   CORS FIX (IMPORTANT)
-========================= */
-
-const normalizeOrigin = (origin) => origin?.replace(/\/$/, "");
+/* =================================
+   CORS
+================================= */
 
 const allowedOrigins = [
-  "http://localhost:5173",
   "http://localhost:3000",
-  "http://localhost:3002",
-  "https://social-media-user-mvjp.vercel.app",
-  normalizeOrigin(process.env.FRONTEND_URL),
-]
-  .filter(Boolean)
-  .map(normalizeOrigin);
+  "http://localhost:3001",
+  "http://localhost:5173",
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    // allow server-to-server / mobile apps / Postman
-    if (!origin) return callback(null, true);
+  // ADD YOUR FRONTEND VERCEL URL
+  "https://social-media-user-mvjp.vercel.app/",
+   process.env.FRONTEND_URL,
+];
 
-    const normalizedOrigin = normalizeOrigin(origin);
-    if (allowedOrigins.includes(normalizedOrigin)) {
-      return callback(null, true);
-    }
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow postman/mobile apps
+      if (!origin) return callback(null, true);
 
-    console.log("Blocked CORS origin:", origin);
-    return callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-app.use(cors(corsOptions));
+      console.log("Blocked Origin:", origin);
 
-/* =========================
+      return callback(
+        new Error("CORS not allowed")
+      );
+    },
+
+    credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
+  })
+);
+
+/* =================================
    SECURITY
-========================= */
+================================= */
 
 app.use(helmet());
 
@@ -80,9 +97,9 @@ app.use(
 
 app.use(morgan("common"));
 
-/* =========================
+/* =================================
    BODY PARSER
-========================= */
+================================= */
 
 app.use(
   bodyParser.json({
@@ -98,66 +115,178 @@ app.use(
   })
 );
 
-/* =========================
+/* =================================
    STATIC FILES
-========================= */
+================================= */
 
 app.use(
   "/assets",
-  express.static(path.join(__dirname, "public/assets"))
+  express.static(
+    path.join(__dirname, "public/assets")
+  )
 );
 
-/* =========================
+/* =================================
    ROUTES
-========================= */
+================================= */
 
 app.use("/auth", authRoutes);
+
 app.use("/users", userRoutes);
+
 app.use("/posts", postRoutes);
 
-/* =========================
+app.use("/chat", chatRoutes);
+
+/* =================================
+   SERVER
+================================= */
+
+const server = http.createServer(app);
+
+/* =================================
+   SOCKET.IO
+================================= */
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+
+  transports: ["websocket", "polling"],
+});
+
+let onlineUsers = new Map();
+
+io.on("connection", (socket) => {
+  console.log(
+    "User Connected:",
+    socket.id
+  );
+
+  /* =========================
+     ADD USER
+  ========================= */
+
+  socket.on("addUser", (userId) => {
+    onlineUsers.set(userId, socket.id);
+
+    io.emit(
+      "getUsers",
+      Array.from(onlineUsers)
+    );
+
+    console.log("Online Users:", onlineUsers);
+  });
+
+  /* =========================
+     SEND MESSAGE
+  ========================= */
+
+  socket.on(
+    "sendMessage",
+    ({
+      senderId,
+      receiverId,
+      text,
+      image,
+      video,
+    }) => {
+      const receiverSocketId =
+        onlineUsers.get(receiverId);
+
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit(
+          "getMessage",
+          {
+            senderId,
+            text,
+            image,
+            video,
+            createdAt: Date.now(),
+          }
+        );
+      }
+    }
+  );
+
+  /* =========================
+     DISCONNECT
+  ========================= */
+
+  socket.on("disconnect", () => {
+    console.log(
+      "User Disconnected:",
+      socket.id
+    );
+
+    for (let [userId, socketId] of onlineUsers) {
+      if (socketId === socket.id) {
+        onlineUsers.delete(userId);
+        break;
+      }
+    }
+
+    io.emit(
+      "getUsers",
+      Array.from(onlineUsers)
+    );
+  });
+});
+
+/* =================================
    DATABASE
-========================= */
+================================= */
 
 const PORT = process.env.PORT || 3001;
 
 mongoose
   .connect(process.env.MONGODB_URL)
   .then(async () => {
-    console.log(" MongoDB Connected");
+    console.log("MongoDB Connected");
 
-    app.listen(PORT, () => {
-      console.log(` Server running on port ${PORT}`);
+    server.listen(PORT, () => {
+      console.log(
+        `Server running on port ${PORT}`
+      );
     });
 
-    /* =========================
+    /* =================================
        SEED DATABASE
-    ========================= */
+    ================================= */
 
-    const userCount = await User.countDocuments();
+    const userCount =
+      await User.countDocuments();
 
     if (userCount === 0) {
-      console.log(" Seeding database...");
+      console.log("Seeding database...");
 
       await User.insertMany(users);
 
-      const fixedPosts = posts.map((post) => ({
-        ...post,
-        mediaUrl:
-          post.mediaUrl ||
-          (post.picturePath
-            ? `http://localhost:${PORT}/assets/${post.picturePath}`
-            : ""),
-        mediaType: post.mediaType || "image",
-      }));
+      const fixedPosts = posts.map(
+        (post) => ({
+          ...post,
+
+          mediaUrl:
+            post.mediaUrl ||
+            (post.picturePath
+              ? `http://localhost:${PORT}/assets/${post.picturePath}`
+              : ""),
+
+          mediaType:
+            post.mediaType || "image",
+        })
+      );
 
       await Post.insertMany(fixedPosts);
 
-      console.log(" Database Seeded");
+      console.log("Database Seeded");
     } else {
-      console.log(" Seed skipped");
+      console.log("Seed skipped");
     }
   })
   .catch((err) => {
-    console.log(" DB Error:", err);
+    console.log("DB Error:", err);
   });
