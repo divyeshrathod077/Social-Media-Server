@@ -137,7 +137,7 @@ mongoose
     console.log(" MongoDB Connected");
 
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(` Server running on port ${PORT}`);
     });
 
     const userCount = await User.countDocuments();
